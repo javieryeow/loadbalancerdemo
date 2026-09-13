@@ -288,5 +288,7 @@ public class LoadBalancerTest {
         assertEquals(20, successfulConnections);
         assertEquals(10, server1.getActiveConnections());
         assertEquals(10, server2.getActiveConnections());
+
+        executorService.shutdown();
     }
 }

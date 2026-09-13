@@ -5,6 +5,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 public class Server {
     private final String id;
+    // volatile ensures changes made to status are immediately visible to all threads
+    // read and write operations from all threads use the main memory instead of its own cpu cache
     private volatile ServerStatus status;
     private final int capacity;
     private final AtomicInteger activeConnections = new AtomicInteger(0);
