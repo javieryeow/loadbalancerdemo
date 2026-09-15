@@ -48,10 +48,14 @@ public class LoadBalancer {
         }
     }
 
-    // selects a server to add a connection to, based on the defined load balancing strategy
+    /* hold the read lock for the entirety of getServer() as servers could be added or removed
+       AFTER we generate the mutable snapshot for our connection assignment loop. this still allows
+       multiple getServer() operations to occur concurrently. even though add/remove server operations
+       are now serialized, this is still satisfactory for a read heavy service like a load balancer */
+
+    //selects a server to add a connection to, based on the defined load balancing strategy
     public String getServer() {
         List<Server> eligibleServers;
-        // use the read lock because we are observing the mutable state of servers
         lock.readLock().lock();
         try {
             if (servers.isEmpty()) {
@@ -63,23 +67,23 @@ public class LoadBalancer {
                             .filter(Server::hasCapacity)
                             .toList()
             );
+
+            // use retry loop rather than a write lock so we can maintain concurrency and
+            // let the server object handle its active connections atomically via Atomic Integer
+            while (!eligibleServers.isEmpty()) {
+                String id = strategy.selectServer(eligibleServers);
+                Server server = findServer(id);
+                // successfully add a connection to the server
+                if (server.tryAddConnection()) {
+                    return id;
+                }
+                // if connection fails, remove the server from the eligibleServers and retry
+                eligibleServers.remove(server);
+            }
+            throw new IllegalStateException("No server capacity available. Please try again later");
         } finally {
             lock.readLock().unlock();
         }
-
-        // use retry loop rather than a write lock so we can maintain concurrency and
-        // let the server object handle its active connections atomically via Atomic Integer
-        while (!eligibleServers.isEmpty()) {
-            String id = strategy.selectServer(eligibleServers);
-            Server server = findServer(id);
-            // successfully add a connection to the server
-            if (server.tryAddConnection()) {
-                return id;
-            }
-            // if connection fails, remove the server from the eligibleServers and retry
-            eligibleServers.remove(server);
-        }
-        throw new IllegalStateException("No server capacity available. Please try again later");
     }
 
     // searches for a server with serverId in the load balancer's server list

@@ -44,6 +44,13 @@ public class Server {
         return getActiveConnections() < capacity;
     }
 
+    /* activeConnections is a single shared counter with a simple bounded invariant:
+     * it must remain between zero and capacity. CAS atomically performs the
+     * conditional update without locking the entire server object. If another thread
+     * modifies the counter between my read and update, the CAS fails and retries
+     * with the latest value. A lock would also be correct and could be simpler
+     * for more complex multi-variable state, but for this small counter update,
+     * an AtomicInteger with CAS is a natural fit. */
     public boolean tryAddConnection() {
         while (true) {
             int current = getActiveConnections();
@@ -72,6 +79,16 @@ public class Server {
         this.status = status;
     }
 
+    // If two objects are equal according to equals(), they must have the same hashCode().
+    // the reverse may not be true (i.e. different objects can have the same hashCode)
+    // assuming we are searching for an object inside a hash collection (e.g. HashSet or HashMap)
+    /* hashCode()
+        ↓
+    find relevant bucket
+        ↓
+    equals()
+        ↓
+    find matching object within that bucket */
     @Override
     public boolean equals(Object o) {
         if (this == o) {
@@ -87,5 +104,4 @@ public class Server {
     public int hashCode() {
         return Objects.hash(id);
     }
-
 }
